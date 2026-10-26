@@ -1,55 +1,58 @@
 # Restore stock notification icon
 
-A resource patch for Morphe / ReVanced-style patch trees. After the **Custom branding** patch has
-run, it puts YouTube's original small status-bar notification icon back.
+A bytecode patch for the [Morphe patches](https://github.com/MorpheApp/morphe-patches) tree. It keeps
+YouTube's original small status-bar notification icon when the **Custom branding** patch is applied.
 
-> **Status: untested.** This was written without access to the Custom branding source, so the
-> notification drawables are discovered by name hints instead of hardcoded names. Verify step 4
-> below before relying on it.
+> **Status: not compiled.** Written against the Morphe patches source at commit `f3acc10`; every
+> symbol it uses was checked against that source by reading it, but no Gradle build was run
+> (the build dependencies are hosted on GitHub Packages and were not reachable from the environment
+> this was written in). Build it before relying on it.
 
-## How it works
+## Why a bytecode patch
 
-Two resource patches live in `RestoreStockNotificationIconPatch.kt`:
+Custom branding does not overwrite the stock notification drawable on normal (non-root) installs.
+It hooks the notification builder and routes the small icon through the extension method
+`CustomBrandingPatch.getSmallIcon(int)`, which picks an icon at runtime from the in-app
+"Notification icon" setting. That setting defaults to "Match app icon", so the branded icon wins.
+The stock drawable (`ic_stat_yt_notification_logo`) is still in the APK, untouched.
 
-1. `stockNotificationIconSnapshotPatch` (hidden helper) records, before branding runs:
-   - every `res/drawable*` file whose name matches `NOTIFICATION_DRAWABLE_HINTS`
-   - the manifest `<meta-data>` value for `com.google.firebase.messaging.default_notification_icon`
-2. `restoreStockNotificationIconPatch` ("Restore stock notification icon") depends on Custom
-   branding, so it runs after it. It writes the original bytes back wherever branding changed or
-   removed a captured file (removing same-name siblings such as `foo.png` vs `foo.xml` to avoid
-   duplicate-resource errors) and resets the manifest reference.
+So there is no resource to restore. The fix is to turn the override off.
 
-If nothing needed restoring it logs a warning instead of failing silently.
+## What the patch does
+
+It makes the extension's private `getNotificationSmallIcon()` return `0` ("no override"). Then:
+
+- `getSmallIcon(original)` returns the app's own icon id, and
+- `getColor(original)` returns the original tint instead of forcing transparent.
+
+Result: the stock icon and tint, while the launcher icon and app name stay branded.
 
 ## Integration
 
-1. Copy `patches/src/main/kotlin/.../RestoreStockNotificationIconPatch.kt` into your patches tree
-   and fix the `package` line to match its folder.
-2. Fix the `customBrandingPatch` import. Find the real symbol with:
-   `grep -rn "Custom branding" patches/src/main/kotlin`
-3. Add `stockNotificationIconSnapshotPatch` to Custom branding's `dependsOn(...)`. This one-line
-   edit guarantees the order snapshot -> Custom branding -> restore.
-4. Check the names: run `apktool d` on the stock APK and list
-   `res/drawable*/*notif*`. Adjust `NOTIFICATION_DRAWABLE_HINTS` (and `NOTIFICATION_META_KEYS`)
-   to what you actually see.
-5. Build and apply:
-   - Morphe patches template: `./gradlew buildAndroid` produces `patches/build/libs/patches-*.mpp`
-     (needs a GitHub PAT for GitHub Packages, see the Morphe docs).
-   - Apply with Morphe Desktop:
-     `java -jar morphe-desktop-*-all.jar patch -p patches-*.mpp youtube.apk`
-   - ReVanced tree: replace `app.morphe.patcher` with `app.revanced.patcher` in the imports and
-     build with that tree's normal Gradle task.
+1. Copy `patches/src/main/kotlin/app/morphe/patches/youtube/layout/branding/RestoreStockNotificationIconPatch.kt`
+   into the same folder of your `morphe-patches` checkout. It shares the package of
+   `customBrandingPatch`, so no import for that is needed.
+2. Build: `./gradlew buildAndroid`. The `.mpp` appears in `patches/build/libs/patches-*.mpp`
+   (needs the GitHub Packages credentials described in the Morphe docs).
+3. Apply it with Morphe Desktop or add the bundle as a source in Morphe Manager, and enable
+   **Restore stock notification icon** next to **Custom branding**.
+
+Selecting this patch also selects Custom branding, because of the dependency.
 
 ## Limits
 
-- Resource-only. If your Custom branding build picks the notification icon at runtime (a bytecode
-  hook plus an in-app "Notification icon" setting), this patch logs a warning and changes nothing.
-  Use that setting, or change its default in the extension code.
-- Selecting this patch also enables Custom branding, because of the dependency.
-- Re-patching with Custom branding's "App icon" set to "Original" also restores the notification
-  icon, but it reverts the launcher icon too.
+- The in-app **Notification icon** setting stops having an effect when this patch is applied.
+- Mounted (root) installs: Custom branding replaces the drawable file itself while patching,
+  so this patch is disabled there. Set Custom branding's **App icon** option to **Original** instead.
+- YouTube only. YouTube Music uses the same base patch but is not covered.
+
+## No patch needed?
+
+The extension has a `NotificationIconTheme.ORIGINAL` value, so on a normal install you can also
+open the Custom branding settings in the patched app and set **Notification icon** to **Original**.
+This patch makes that the baked-in behavior.
 
 ## License
 
-No license file is included yet. Morphe patches are GPLv3 with extra terms; pick a license that
-is compatible with the tree you integrate this into.
+No license file is included yet. Morphe patches are GPLv3 with extra terms (attribution and a
+restriction on using the "Morphe" name for derivative works), so pick a compatible license.
