@@ -41,6 +41,12 @@ Selecting this patch also selects Custom branding, because of the dependency.
 
 ## Limits
 
+- **Does not cover every notification.** Some push notifications are built by the system from the
+  app's static launcher icon (`android:icon` on `<application>`), not through the hooked notification
+  builder. Custom branding sets that icon while patching, and it cannot be changed at runtime
+  (the Custom branding source says the same). If those still show the branded icon, re-patch with
+  Custom branding's **App icon** option set to **Original**. That is also the fix the Morphe
+  maintainers gave in issue #1838, and it needs no extra patch.
 - The in-app **Notification icon** setting stops having an effect when this patch is applied.
 - Mounted (root) installs: Custom branding replaces the drawable file itself while patching,
   so this patch is disabled there. Set Custom branding's **App icon** option to **Original** instead.
